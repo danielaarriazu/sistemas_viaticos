@@ -1,0 +1,22 @@
+# Entornos virtuales
+.venv/
+env/
+
+# Archivos compilados de Python
+__pycache__/
+*.pyc
+
+# Carpetas del ejecutable (PyInstaller)
+build/
+dist/
+*.spec
+
+# Base de datos y archivos sensibles (¡Muy importante!)
+*.db
+*.sqlite
+*.sqlite3
+uploads/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
