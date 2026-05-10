@@ -9,6 +9,7 @@ __pycache__/
 # Carpetas del ejecutable (PyInstaller)
 build/
 dist/
+referencias/
 *.spec
 
 # Base de datos y archivos sensibles (¡Muy importante!)
