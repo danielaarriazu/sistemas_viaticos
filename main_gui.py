@@ -187,7 +187,7 @@ class SistemaViaticosNaval(ctk.CTk):
         self.cal_emision = DateEntry(row_e1, date_pattern='dd/mm/yyyy', width=12)
         self.cal_emision.pack(side="left", padx=5)
 
-        ctk.CTkButton(self.content_frame, text="📄 GENERAR PDF", fg_color="#2c3e50", height=45, command=self.ejecutar_pdf_gui).pack(pady=10)
+        ctk.CTkButton(self.content_frame, text="📄 GENERAR WORD", fg_color="#2c3e50", height=45, command=self.ejecutar_pdf_gui).pack(pady=10)
 
     # ==========================================
     # CONFIGURACIÓN Y PESTAÑAS
@@ -484,9 +484,12 @@ class SistemaViaticosNaval(ctk.CTk):
             "importe_diario": liquidacion["importe_diario"], 
             "categoria": cat_nombre
         }
-            nombre_archivo = f"Recibo_{self.ent_apellido.get()}_{mr}.pdf"
-            reportes.build_receipt_pdf(nombre_archivo, data_pdf)
-            messagebox.showinfo("Éxito", f"PDF generado correctamente.\nPorcentaje de comisión aplicado: {pct}%\nTotal: $ {liquidacion['total_calculado']:,.2f}")
+            f_salida_obj = datetime.strptime(self.cal_salida.get(), "%d/%m/%Y")
+            mes_salida_fmt = f_salida_obj.strftime("%m_%Y")
+            nombre_word = f"Recibo_{self.ent_apellido.get()}_{mr}_{mes_salida_fmt}.docx"
+            nombre_docx = reportes.obtener_nombre_unico(nombre_word, ".docx")
+            reportes.build_receipt_docx(nombre_word, data_pdf)
+            messagebox.showinfo("Éxito", f"Archivo Word generado correctamente:\n{nombre_word}")
         except Exception as e: 
             messagebox.showerror("Error", str(e))
 

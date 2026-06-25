@@ -231,39 +231,28 @@ if menu == "📊 Dashboard":
 
     st.divider()
     
-    # --- GENERAR PDF ---
-    if st.button("📄 GENERAR RECIBO (PDF)", width="stretch", type="primary"):
+    # --- GENERAR word ---
+    if st.button("📝 GENERAR RECIBO (WORD)", width="stretch", type="primary"):
         try:
             cod_dest_pdf = dict_destinos.get(destino_revista)
             if not cod_dest_pdf:
                 st.error("Seleccione un destino de revista.")
                 st.stop()
 
-            # 1. Recuperar info del destino y detall
             dest_info = destinos.obtener_destino(cod_dest_pdf)
             detall_info = db.get_config_detall()
 
-            # 2. Recuperar la categoría de la jerarquía seleccionada
-            # Usamos un JOIN en la base de datos para saber si el "TN" es Oficial Subalterno, etc.
             cod_jerarquia = jerarquia_seleccionada.split(" - ")[0]
-            query_cat = """
-                SELECT c.categoria 
-                FROM jerarquias j 
-                JOIN categorias c ON j.id_cat = c.id_cat 
-                WHERE j.cod_jerarquia = ?
-            """
+            query_cat = "SELECT c.categoria FROM jerarquias j JOIN categorias c ON j.id_cat = c.id_cat WHERE j.cod_jerarquia = ?"
             categoria_row = db.execute_query(query_cat, (cod_jerarquia,), fetch=True)
             categoria_nombre = categoria_row["categoria"] if categoria_row else "VOLUNTARIOS Y ASPIRANTES"
 
-            # 3. Recuperar el sueldo del Almirante del mes actual (ejemplo: pedimos el último cargado)
-            # (Si tenés varios meses, podrías agregar un SelectBox en el UI, acá tomamos el sueldo directo)
-            mes_actual = fecha_salida.strftime("%Y-%m") # Ej: 2026-04
+            mes_actual = fecha_salida.strftime("%Y-%m")
             sueldo_adm = db.get_sueldo_mes(mes_actual)
             if not sueldo_adm:
-                st.error(f"No hay sueldo de Almirante cargado para el mes {mes_actual}. Vaya a Configuraciones.")
+                st.error(f"No hay sueldo de Almirante cargado para el mes {mes_actual}.")
                 st.stop()
 
-            # 4. Magia de Viaticos.py (Cálculo real)
             f_salida_str = fecha_salida.strftime("%d/%m/%Y")
             f_regreso_str = fecha_regreso.strftime("%d/%m/%Y")
             h_salida_str = hora_salida.strftime("%H:%M")
@@ -278,54 +267,46 @@ if menu == "📊 Dashboard":
                 hora_regreso=h_regreso_str
             )
 
-            # 5. Estructuramos la data para ReportLab
             data_pdf = {
-                "mr": mr_input,
-                "dni": dni,
-                "nombre": nombre,
-                "apellido": apellido,
+                "mr": mr_input, "dni": dni, "nombre": nombre, "apellido": apellido,
                 "jerarquia_desc": jerarquia_seleccionada.split(" - ")[1],
-                "destino_revista_desc": destino_revista,
-                "cod_destino": cod_dest_pdf,
-                
-                # Nuevos campos de la comisión
-                "lugar_origen": lugar_origen,
-                "destino_comision": destino_comision,
-                "motivo": motivo,
-                "orden": orden,
-                "fecha_salida": f_salida_str,
-                
-                # Nuevos campos de emisión del PDF
-                "lugar_emision": lugar_emision,
-                "fecha_emision_recibo": fecha_emision_recibo.strftime("%d/%m/%Y"),
-                
+                "destino_revista_desc": destino_revista, "cod_destino": cod_dest_pdf,
+                "lugar_origen": lugar_origen, "destino_comision": destino_comision,
+                "motivo": motivo, "orden": orden, "fecha_salida": f_salida_str,
+                "lugar_emision": lugar_emision, "fecha_emision_recibo": fecha_emision_recibo.strftime("%d/%m/%Y"),
                 "sello_detall_path": detall_info['sello_detall'] if detall_info else "",
                 "firma_detall_path": detall_info['firma_detall'] if detall_info else "",
-                "nombre_jefe_personal": detall_info['nombre_jefe'] if detall_info else "",
-                "cargo_jefe_personal": detall_info['cargo_jefe'] if detall_info else "",
                 "sello_director_path": dest_info['sello_director'] if dest_info else "",
                 "firma_director_path": dest_info['firma_director'] if dest_info else "",
-                "nombre_director": dest_info['nombre_director'] if dest_info else "",
-                "cargo_director": dest_info['cargo_director'] if dest_info else "",
-
-                # Pasamos los resultados calculados
                 "total_calculado": liquidacion["total_calculado"],
                 "detalle_breakdown": liquidacion["detalle_breakdown"],
-                "importe_diario": liquidacion["importe_diario"],
-                "categoria": categoria_nombre
+                "importe_diario": liquidacion["importe_diario"], "categoria": categoria_nombre
             }
-            nombre_archivo = f"Recibo_{apellido}_{mr_input}.pdf"
-            reportes.build_receipt_pdf(nombre_archivo, data_pdf)
+
+            # Lógica para evitar sobreescritura: Apellido_MR_Mes_Año.docx
+            mes_salida_fmt = fecha_salida.strftime("%m_%Y")
+            nombre_word = f"Recibo_{apellido}_{mr_input}_{mes_salida_fmt}.docx"
+            nombre_docx = reportes.obtener_nombre_unico(nombre_word, ".docx")
+            
+            # Ejecución directa del Word
+            reportes.build_receipt_docx(nombre_word, data_pdf)
             
             st.divider()
             
-            # Botón de descarga web
-            with open(nombre_archivo, "rb") as pdf_file:
-                st.download_button("⬇️ Descargar PDF Generado", data=pdf_file, file_name=nombre_archivo, mime="application/pdf", type="primary", on_click=limpiar_formulario_completo)
-            st.success(f"¡Recibo calculado y generado con éxito! Total: {viaticos.format_money(liquidacion['total_calculado'])}")
+            # Botón único de descarga en formato Word (.docx)
+            with open(nombre_word, "rb") as word_file:
+                st.download_button(
+                    label="⬇️ Descargar archivo Word (.docx)", 
+                    data=word_file, 
+                    file_name=nombre_word, 
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                    type="primary", 
+                    on_click=limpiar_formulario_completo
+                )
+            st.success(f"¡Recibo Word generado con éxito!")
             
         except Exception as e:
-            st.error(f"Error al generar: {e}")
+            st.error(f"Error al generar el archivo Word: {e}")
 # ==========================================
 # MÓDULO 2: CONFIGURACIONES
 # ==========================================

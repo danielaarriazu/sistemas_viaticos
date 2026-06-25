@@ -3,6 +3,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+import docx
+from docx.shared import Cm, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 import viaticos
 
@@ -13,35 +16,54 @@ def _img(img_path, width, height):
         return Image(img_path, width=width, height=height)
     return Spacer(width, height)
 
+def obtener_nombre_unico(nombre_base, extension=".docx"):
+    """Si el archivo existe, le agrega un número al final: _1, _2..."""
+    i = 1
+    nombre_final = f"{nombre_base}{extension}"
+    while os.path.exists(nombre_final):
+        nombre_final = f"{nombre_base}_{i}{extension}"
+        i += 1
+    return nombre_final
+    
 
-def build_receipt_pdf(path: str, data: dict) -> None:
-    """Genera el PDF con el formato exacto del Anexo 38 (703.e)."""
+def build_receipt_docx(path: str, data: dict) -> None:
+    """Genera exclusivamente el recibo en formato Word (.docx) con el Anexo 38."""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    doc = docx.Document()
+    
+    # Configuración formal de márgenes
+    for section in doc.sections:
+        section.top_margin = Cm(2.0)
+        section.bottom_margin = Cm(2.0)
+        section.left_margin = Cm(2.5)
+        section.right_margin = Cm(2.5)
 
-    doc = SimpleDocTemplate(
-        path, pagesize=A4,
-        topMargin=2.0*cm, bottomMargin=2.0*cm,
-        leftMargin=2.5*cm, rightMargin=2.5*cm
-    )
+    # Tipografía base (Arial 11)
+    style = doc.styles['Normal']
+    style.font.name = 'Arial'
+    style.font.size = Pt(11)
 
-    styles = getSampleStyleSheet()
-    s_left     = ParagraphStyle("Left",     parent=styles["Normal"], fontName="Helvetica", fontSize=10, alignment=0)
-    s_center   = ParagraphStyle("Center",   parent=styles["Normal"], fontName="Helvetica", fontSize=10, alignment=1)
-    s_right    = ParagraphStyle("Right",    parent=styles["Normal"], fontName="Helvetica", fontSize=10, alignment=2)
-    s_title    = ParagraphStyle("Title",    parent=styles["Heading1"], fontName="Helvetica-Bold", fontSize=12, alignment=1, leading=14)
-    s_body     = ParagraphStyle("Body",     parent=styles["Normal"], fontName="Helvetica", fontSize=11, leading=18, alignment=4)
-    s_sign     = ParagraphStyle("Sign",     parent=styles["Normal"], fontName="Helvetica", fontSize=9,  leading=13, alignment=1)
-    s_causante = ParagraphStyle("Causante", parent=styles["Normal"], fontName="Helvetica", fontSize=10, leading=15, alignment=0)
+    # Encabezado estructurado sin bordes
+    table_hdr = doc.add_table(rows=1, cols=2)
+    table_hdr.autofit = True
+    table_hdr.cell(0, 0).paragraphs[0].add_run("ARMADA ARGENTINA").bold = True
+    
+    p_hdr_right = table_hdr.cell(0, 1).paragraphs[0]
+    p_hdr_right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p_hdr_right.add_run("ANEXO 38\n(703.e)").bold = True
 
-    def fecha_es(fecha_str):
-        if not fecha_str:
-            return ""
-        dia, mes, anio = fecha_str.split("/")
-        meses = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
-                 "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
-        return f"{dia} de {meses[int(mes)]} de {anio}"
+    doc.add_paragraph() # Espaciador
 
-    # ── Cálculos ──────────────────────────────────────────────────────────────
+    # Título Oficial
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_title = p_title.add_run("RECIBO POR VIÁTICOS POR COMISIONES DEL SERVICIO\nPERSONAL MILITAR")
+    run_title.bold = True
+    run_title.font.size = Pt(12)
+
+    doc.add_paragraph()
+
+    # Tratamiento de datos financieros y texto del cuerpo
     total_float  = data.get("total_calculado", 0.0)
     total_txt    = viaticos.format_money(total_float)
     total_letras = viaticos.importe_a_letras(total_float)
@@ -49,7 +71,7 @@ def build_receipt_pdf(path: str, data: dict) -> None:
     texto_pct_nota = f" (al {pct_aplicado}%)" if pct_aplicado != 100.0 else ""
     
     texto_cuerpo = (
-        f"--------- Recibí de la <b>JEFATURA ADMINISTRATIVA FINANCIERA DE LA ARMADA</b> "
+        f"--------- Recibí de la JEFATURA ADMINISTRATIVA FINANCIERA DE LA ARMADA "
         f"la suma de {total_letras} ({total_txt}), correspondiente a "
         f"{data.get('detalle_breakdown', '')} del viático diario de "
         f"{viaticos.format_money(data.get('importe_diario', 0.0))} – "
@@ -58,117 +80,53 @@ def build_receipt_pdf(path: str, data: dict) -> None:
         f"hasta {data.get('destino_comision', '')} el día {data.get('fecha_regreso', '')} a las {data.get('hora_regreso', '')}, "
         f"con motivo de {data.get('motivo', '')}. Por orden {data.get('orden', '')}."
     )
+    p_body = doc.add_paragraph(texto_cuerpo)
+    p_body.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p_body.paragraph_format.line_spacing = 1.25
 
-    # ── Encabezado: "ARMADA ARGENTINA" izq / "ANEXO 38 (703.e)" der ──────────
-    t_header = Table([
-    [Paragraph("ARMADA ARGENTINA", s_left)],
-    [Paragraph("ANEXO 38<br/>(703.e)", s_center)]
-    ], colWidths=[16*cm])
+    doc.add_paragraph()
 
-    elems = [
-        t_header,
-        Spacer(1, 1*cm),
-        Paragraph("RECIBO POR VIÁTICOS POR COMISIONES DEL SERVICIO<br/>PERSONAL MILITAR", s_title),
-        Spacer(1, 0.5*cm),
-        Paragraph(texto_cuerpo, s_body),
-        Spacer(1, 0.5*cm),
-    ]
+    # Fecha de Emisión (Derecha)
+    def fecha_es_local(fecha_str):
+        if not fecha_str: return ""
+        dia, mes, anio = fecha_str.split("/")
+        meses = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+                 "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+        return f"{dia} de {meses[int(mes)]} de {anio}"
 
-    # ── Fecha de emisión (derecha) ────────────────────────────────────────────
     lugar_emision = data.get("lugar_emision", "Buenos Aires")
-    fecha_fmt     = fecha_es(data.get("fecha_emision_recibo", ""))
-    elems.append(Paragraph(f"{lugar_emision}, {fecha_fmt}.", s_right))
-    elems.append(Spacer(1, 1*cm))
+    fecha_fmt = fecha_es_local(data.get("fecha_emision_recibo", ""))
+    p_emision = doc.add_paragraph(f"{lugar_emision}, {fecha_fmt}.")
+    p_emision.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    # ── Bloque causante (mitad derecha) ───────────────────────────────────────
+    doc.add_paragraph()
+
+    # Cuadro de firmas del Causante e imágenes de validación
     causante_txt = (
-        f"Firma: .................................................<br/>"
-        f"Aclaración: {data.get('nombre', '')} {data.get('apellido', '')}<br/>"
-        f"M.R. {data.get('mr', '')} – {data.get('jerarquia_desc', '')}<br/>"
-        f"DNI: {data.get('dni', '')}<br/>"
-        f"COD. Alfa/Numérico: {data.get('cod_destino', '')}<br/>"
+        f"Firma: .................................................\n"
+        f"Aclaración: {data.get('nombre', '')} {data.get('apellido', '')}\n"
+        f"M.R. {data.get('mr', '')} – {data.get('jerarquia_desc', '')}\n"
+        f"DNI: {data.get('dni', '')}\n"
+        f"COD. Alfa/Numérico: {data.get('cod_destino', '')}\n"
         f"Destino de Revista: {data.get('destino_revista_desc', '')}"
     )
-    t_causante = Table(
-        [[Paragraph("", s_causante), Paragraph(causante_txt, s_causante)]],
-        colWidths=[10*cm, 8*cm]
-    )
-    t_causante.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    elems.append(t_causante)
-    elems.append(Spacer(0.1, 0.5*cm))
+    p_causante = doc.add_paragraph(causante_txt)
+    p_causante.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    # ── Bloque de autoridades (FORMATO ESCALONADO) ────────────────────────────
-    #
-    #  FILA 1 (Arriba):   [ Sello Detall (Izq) ]    [ Firma + Aclaración (Centro-Izq) ]
-    #  FILA 2 (Abajo):                              [ Sello Director (Centro) ]    [ Firma + Aclaración (Der) ]
-    #
-    nombre_jefe = data.get("nombre_jefe_personal", "")
-    cargo_jefe  = data.get("cargo_jefe_personal",  "")
-    nombre_dir  = data.get("nombre_director", "")
-    cargo_dir   = data.get("cargo_director",  "")
+    doc.add_paragraph()
 
-    # Imágenes (Ajustamos el tamaño para que entren perfectas sin deformar la tabla)
-    sello_detall_img = _img(data.get("sello_detall_path"),   5.0*cm, 4.0*cm)
-    firma_detall_img = _img(data.get("firma_detall_path"),   4.0*cm, 1.5*cm)
-    sello_dir_img    = _img(data.get("sello_director_path"), 4.0*cm, 5.0*cm)
-    firma_dir_img    = _img(data.get("firma_director_path"), 4.0*cm, 1.5*cm)
+    # Inserción de Sellos y Firmas del Detall y Director
+    table_signs = doc.add_table(rows=1, cols=2)
+    cell_detall = table_signs.cell(0, 0)
+    if data.get("sello_detall_path") and os.path.exists(data.get("sello_detall_path")):
+        cell_detall.paragraphs[0].add_run().add_picture(data["sello_detall_path"], width=Cm(4.0))
+    if data.get("firma_detall_path") and os.path.exists(data.get("firma_detall_path")):
+        cell_detall.add_paragraph().add_run().add_picture(data["firma_detall_path"], width=Cm(4.0))
 
-    # -------------------------------------------------------------------------
-    # 1. BLOQUE DETALL (Margen izquierdo)
-    # -------------------------------------------------------------------------
-    # Agrupamos la firma, el nombre y el cargo en una sola celda vertical
-    col_firma_detall = [
-        firma_detall_img,
-        #Paragraph(nombre_jefe, s_sign),
-        #Paragraph(cargo_jefe,  s_sign),
-    ]
+    cell_dir = table_signs.cell(0, 1)
+    if data.get("sello_director_path") and os.path.exists(data.get("sello_director_path")):
+        cell_dir.paragraphs[0].add_run().add_picture(data["sello_director_path"], width=Cm(4.0))
+    if data.get("firma_director_path") and os.path.exists(data.get("firma_director_path")):
+        cell_dir.add_paragraph().add_run().add_picture(data["firma_director_path"], width=Cm(4.0))
 
-    # Creamos la tabla horizontal: [ Sello | Texto ]
-    t_detall = Table(
-        [[sello_detall_img, col_firma_detall]],
-        colWidths=[4.5*cm, 4.0*cm, 1*cm],
-        rowHeights=[3*cm],
-        hAlign='LEFT'
-    )
-    t_detall.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("VALIGN", (1, 0), (1, 0), "BOTTOM"),
-        ("ALIGN",  (0, 0), (-1, -1), "LEFT"),
-        ("ALIGN",  (1, 0), (1, 0), "LEFT"), # Firma pegada al sello
-        ("LEFTPADDING", (0, 0), (0, 0), -1.5*cm), # Eliminar espacio interno
-        ("LEFTPADDING", (1, 0), (1, 0), -1.2*cm), # Eliminar espacio interno
-    ]))
-
-    elems.append(t_detall)
-    
-    # Agregamos el espacio vertical equivalente a dos "enters"
-    elems.append(Spacer(1, 1.5*cm))
-
-    # -------------------------------------------------------------------------
-    # 2. BLOQUE DIRECTOR (Centro - Derecha)
-    # -------------------------------------------------------------------------
-    # Agrupamos la firma, el nombre y el cargo en una sola celda vertical
-    col_firma_dir = [
-        firma_dir_img,
-       # Paragraph(nombre_dir, s_sign),
-       # Paragraph(cargo_dir,  s_sign),
-    ]
-
-    # Para centrar el sello y mandar la firma a la derecha, usamos 3 columnas:
-    # [ Espacio Vacío (4.5cm) | Sello (6cm) | Firma (6.5cm) ] = 17cm total de hoja
-    t_director = Table(
-        [[Spacer(5.5*cm, 1*cm), sello_dir_img, col_firma_dir]],
-        colWidths=[5.5*cm, 4.3*cm, 0.5*cm],
-        hAlign='LEFT'
-    )
-    t_director.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN",  (1, 0), (1, 0), "LEFT"),
-        ("ALIGN",  (2, 0), (2, 0), "LEFT"), # Firma pegada al sello
-        ("LEFTPADDING", (2, 0), (2, 0), 0), # Eliminar espacio interno
-    ]))
-
-    elems.append(t_director)
-
-    # Construir el PDF
-    doc.build(elems)
+    doc.save(path)
