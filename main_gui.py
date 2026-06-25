@@ -486,10 +486,16 @@ class SistemaViaticosNaval(ctk.CTk):
         }
             f_salida_obj = datetime.strptime(self.cal_salida.get(), "%d/%m/%Y")
             mes_salida_fmt = f_salida_obj.strftime("%m_%Y")
-            nombre_word = f"Recibo_{self.ent_apellido.get()}_{mr}_{mes_salida_fmt}.docx"
-            nombre_docx = reportes.obtener_nombre_unico(nombre_word, ".docx")
-            reportes.build_receipt_docx(nombre_word, data_pdf)
-            messagebox.showinfo("Éxito", f"Archivo Word generado correctamente:\n{nombre_word}")
+            nombre_base_sin_ext = f"Recibo_{self.ent_apellido.get()}_{mr}_{mes_salida_fmt}"
+            
+            # 1. Generás el nombre único
+            nombre_docx = reportes.obtener_nombre_unico(nombre_base_sin_ext, ".docx")
+            
+            # 2. Se lo pasás a la función que crea el Word (usando nombre_docx)
+            reportes.build_receipt_docx(nombre_docx, data_pdf) 
+            
+            # 3. Mostrás el mensaje con el nombre final (usando nombre_docx)
+            messagebox.showinfo("Éxito", f"Archivo Word generado correctamente:\n{nombre_docx}")
         except Exception as e: 
             messagebox.showerror("Error", str(e))
 

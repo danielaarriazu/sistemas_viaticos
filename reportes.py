@@ -17,7 +17,6 @@ def _img(img_path, width, height):
     return Spacer(width, height)
 
 def obtener_nombre_unico(nombre_base, extension=".docx"):
-    """Si el archivo existe, le agrega un número al final: _1, _2..."""
     i = 1
     nombre_final = f"{nombre_base}{extension}"
     while os.path.exists(nombre_final):
